@@ -23,6 +23,15 @@ module HawkularAccounts {
             $scope.organizations = [];
             $scope.loading = true;
 
+            // organizations should not have access to this, only actual users
+            $rootScope.$on('SwitchedPersona', (persona) => {
+                if ($rootScope.userDetails.id === persona.id) {
+                    $scope.loadOrganizations();
+                } else {
+                    $location.path('/accounts/');
+                }
+            });
+
             $scope.load = () => {
                 $scope.loadOrganizations();
             };
@@ -53,15 +62,18 @@ module HawkularAccounts {
             };
 
             $scope.load();
-
-            $rootScope.$on('SwitchedPersona', () => {
-                $scope.loadOrganizations();
-            });
         }]);
 
     export var OrganizationNewController = _module.controller("HawkularAccounts.OrganizationNewController", [
-        '$scope', 'HawkularAccounts.OrganizationService', '$log', '$location',
-        ($scope, OrganizationService, $log, $location) => {
+        '$rootScope', '$scope', 'HawkularAccounts.OrganizationService', '$log', '$location',
+        ($rootScope, $scope, OrganizationService, $log, $location) => {
+
+            // organizations should not have access to this, only actual users
+            $rootScope.$on('SwitchedPersona', (persona) => {
+                if ($rootScope.userDetails.id !== persona.id) {
+                    $location.path('/accounts/');
+                }
+            });
 
             $scope.organizationNew = new OrganizationService({});
             $scope.persist = () => {

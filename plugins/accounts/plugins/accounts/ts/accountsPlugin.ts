@@ -19,15 +19,37 @@ module HawkularAccounts {
     export var _module = angular.module(HawkularAccounts.pluginName, ['ui.bootstrap']);
     var accountsTab:any = undefined;
     var currentPersona:any = undefined;
+    var currentUser:any = undefined;
 
     _module.config(['$locationProvider', '$routeProvider', '$httpProvider', 'HawtioNavBuilderProvider', ($locationProvider, $routeProvider:ng.route.IRouteProvider, $httpProvider:ng.IHttpProvider, builder:HawtioMainNav.BuilderFactory) => {
+        var myAccountTab = builder
+            .create()
+            .id('myAccountTab')
+            .title(() => "My account")
+            .href(() => "/accounts/accounts")
+            .page(() => builder.join(HawkularAccounts.templatePath, 'accounts.html'))
+            .build();
+
+        var organizationsTab = builder
+            .create()
+            .id('organizationsTab')
+            .title(() => "Organizations")
+            .href(() => "/accounts/organizations")
+            .page(() => builder.join(HawkularAccounts.templatePath, 'organizations.html'))
+            .show(() => {
+                // this returns "true" if the user is the same as the current persona
+                // or if the current user is not loaded yet, meaning, the current persona is *not* an organization
+                return !!(!currentUser || currentUser.id === currentPersona.id);
+            })
+            .build();
+
         accountsTab = builder.create()
             .id(HawkularAccounts.pluginName)
             .title(() => "Accounts")
             .href(() => "/accounts")
-            .subPath("My account", "accounts", builder.join(HawkularAccounts.templatePath, 'accounts.html'))
-            .subPath("Organizations", "organizations", builder.join(HawkularAccounts.templatePath, 'organizations.html'))
+            .tabs(myAccountTab, organizationsTab)
             .build();
+
         builder.configureRouting($routeProvider, accountsTab);
 
         $routeProvider.when('/accounts/organizations/new', {templateUrl: builder.join(HawkularAccounts.templatePath, 'organization_new.html')});
@@ -57,7 +79,7 @@ module HawkularAccounts {
         });
 
         $rootScope.$on('CurrentPersonaLoaded', (e, persona) => {
-            currentPersona = persona;
+            currentPersona = currentUser = persona;
         });
 
         $rootScope.$on('SwitchedPersona', (e, persona) => {
