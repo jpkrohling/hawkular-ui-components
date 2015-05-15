@@ -22,7 +22,7 @@ module HawkularMetrics {
 
   export class AddUrlController {
     /// this is for minification purposes
-    public static $inject = ['$location', '$scope', '$rootScope', '$interval', '$log', '$filter', '$modal', 'HawkularInventory', 'HawkularMetric', 'HawkularAlert', 'HawkularAlertsManager','HawkularErrorManager', '$q', 'md5'];
+    public static $inject = ['$location', '$scope', '$rootScope', '$interval', '$log', '$filter', '$modal', 'HawkularInventory', 'HawkularMetric', 'HawkularAlert', 'HawkularAlertsManager','HawkularErrorManager','$q', 'md5'];
 
     private httpUriPart = 'http://';
     public addProgress: boolean = false;
@@ -33,7 +33,7 @@ module HawkularMetrics {
 
     constructor(private $location:ng.ILocationService,
                 private $scope:any,
-                private $rootScope:any,
+                private $rootScope:ng.IRootScopeService,
                 private $interval:ng.IIntervalService,
                 private $log:ng.ILogService,
                 private $filter:ng.IFilterService,
@@ -48,18 +48,10 @@ module HawkularMetrics {
                 public resourceUrl:string) {
       $scope.vm = this;
       this.resourceUrl = this.httpUriPart;
-
-      if (this.$rootScope.currentPersona) {
-        this.getResourceList(this.$rootScope.currentPersona.id);
-      } else {
-        // currentPersona hasn't been injected to the rootScope yet, wait for it..
-        $rootScope.$on('UserInitialized', (tenantId) => {
-          this.getResourceList(tenantId);
-        });
-      }
-
+      this.getResourceList();
       this.autoRefresh(20);
     }
+
     private autoRefreshPromise:ng.IPromise<number>;
 
     cancelAutoRefresh():void {
@@ -92,14 +84,13 @@ module HawkularMetrics {
       this.$log.info('Adding new Resource Url to Hawkular-inventory: ' + url);
 
       var metricId: string;
-      var defaultEmail = this.$rootScope.userDetails.email || 'myemail@company.com';
+      var defaultEmail = this.$rootScope['user_email'] ? this.$rootScope['user_email'] : 'myemail@company.com';
       var err = (error: any, msg: string): void => this.HawkularErrorManager.errorHandler(error, msg);
-      var currentTenantId = this.$rootScope.currentPersona.id;
 
       /// Add the Resource and its metrics
-      this.HawkularInventory.Resource.save({tenantId: currentTenantId, environmentId: globalEnvironmentId}, resource).$promise
+      this.HawkularInventory.Resource.save({tenantId: globalTenantId, environmentId: globalEnvironmentId}, resource).$promise
         .then((newResource) => {
-          this.getResourceList(currentTenantId);
+          this.getResourceList();
           metricId = resourceId;
           console.dir(newResource);
           this.$log.info('New Resource ID: ' + metricId + ' created.');
@@ -122,13 +113,13 @@ module HawkularMetrics {
           var errMetric = (error: any) => err(error, 'Error saving metric.');
           var createMetric = (metric: any) =>
             this.HawkularInventory.Metric.save({
-              tenantId: currentTenantId,
+              tenantId: globalTenantId,
               environmentId: globalEnvironmentId
             }, metric).$promise;
 
           var associateResourceWithMetrics = () =>
             this.HawkularInventory.ResourceMetric.save({
-              tenantId: currentTenantId,
+              tenantId: globalTenantId,
               environmentId: globalEnvironmentId,
               resourceId: resourceId
             }, metricsIds).$promise;
@@ -164,9 +155,8 @@ module HawkularMetrics {
         });
     }
 
-    getResourceList(currentTenantId?: string):any {
-      var tenantId:string = currentTenantId || this.$rootScope.currentPersona.id;
-      this.HawkularInventory.Resource.query({tenantId: tenantId, environmentId: globalEnvironmentId, per_page: this.resPerPage, page: this.resCurPage}, (aResourceList, getResponseHeaders) => {
+    getResourceList():any {
+      this.HawkularInventory.Resource.query({tenantId: globalTenantId, environmentId: globalEnvironmentId, per_page: this.resPerPage, page: this.resCurPage}, (aResourceList, getResponseHeaders) => {
         // FIXME: hack.. make expanded out of list
         var pages = getResponseHeaders().link ? getResponseHeaders().link.split(', ') : [];
         for (var p = 0; p < pages.length; p++) {
@@ -182,19 +172,19 @@ module HawkularMetrics {
         var promises = [];
         angular.forEach(aResourceList, function(res, idx) {
           promises.push(this.HawkularMetric.NumericMetricData.queryMetrics({
-            tenantId: tenantId, resourceId: res.id, numericId: (res.id + '.status.duration'),
+            tenantId: globalTenantId, resourceId: res.id, numericId: (res.id + '.status.duration'),
             start: moment().subtract(24, 'hours').valueOf(), end: moment().valueOf()}, (resource) => {
             // FIXME: Work data so it works for chart ?
             res['responseTime'] = resource;
           }).$promise);
           promises.push(this.HawkularMetric.NumericMetricData.queryMetrics({
-            tenantId: tenantId, resourceId: res.id, numericId: (res.id + '.status.code'),
+            tenantId: globalTenantId, resourceId: res.id, numericId: (res.id + '.status.code'),
             start: moment().subtract(24, 'hours').valueOf(), end: moment().valueOf()}, (resource) => {
             // FIXME: Use availability instead..
             res['isUp'] = (resource[0] && resource[0].value >= 200 && resource[0].value < 300);
           }).$promise);
           promises.push(this.HawkularMetric.AvailabilityMetricData.query({
-            tenantId: tenantId,
+            tenantId: globalTenantId,
             availabilityId: res.id,
             start: moment().subtract(24, 'hours').valueOf(),
             end: moment().valueOf(),
@@ -241,15 +231,15 @@ module HawkularMetrics {
 
   class DeleteResourceModalController {
 
-    static $inject = ['$scope', '$rootScope', '$modalInstance', 'HawkularInventory', 'resource'];
+    static $inject = ['$scope', '$modalInstance', 'HawkularInventory', 'resource'];
 
-    constructor(private $scope, private $rootScope, private $modalInstance: any, private HawkularInventory, public resource) {
+    constructor(private $scope, private $modalInstance: any, private HawkularInventory, public resource) {
       $scope.vm = this;
     }
 
     deleteResource() {
       this.HawkularInventory.Resource.delete({
-        tenantId: this.$rootScope.currentPersona.id,
+        tenantId: globalTenantId,
         environmentId: globalEnvironmentId,
         resourceId: this.resource.id
       }).$promise.then((res) => {
